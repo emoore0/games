@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Four in a row: parity trainer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#DCE2DF; --paper-2:#CDD5D1; --ink:#1E282B; --ink-soft:#4B585C; --line:#AEB9B5;
+  --wood:#C39562; --wood-dark:#94683D; --grain:rgba(92,58,26,.10);
+  --behind:#56625F; --you:#2A3D69; --you-hi:#4D65A0; --bot:#EFE7D5; --bot-lo:#D2C4A6;
+  --gold:#E6AE2E; --warn:#B8352B; --good:#2E7A57; --focus:#1F6FD1;
+  --display:"Bricolage Grotesque", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body:"Atkinson Hyperlegible", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#1D2524; --paper-2:#26302E; --ink:#E3EAE7; --ink-soft:#A3B1AD; --line:#3A4744;
+    --wood:#A87B4B; --wood-dark:#7A5430; --grain:rgba(40,22,8,.18);
+    --behind:#10161A; --focus:#7DB3FF; --warn:#F07A6E; --good:#6CC79B;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#1D2524; --paper-2:#26302E; --ink:#E3EAE7; --ink-soft:#A3B1AD; --line:#3A4744;
+  --wood:#A87B4B; --wood-dark:#7A5430; --grain:rgba(40,22,8,.18);
+  --behind:#10161A; --focus:#7DB3FF; --warn:#F07A6E; --good:#6CC79B;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;overflow-x:hidden}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.wrap{max-width:1040px;margin:0 auto;padding:28px 20px 48px;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:36px;align-items:start}
+@media (max-width:860px){.wrap{grid-template-columns:minmax(0,1fr);gap:24px;padding:18px 14px 40px}}
+
+h1{font-family:var(--display);font-weight:800;font-size:clamp(2.2rem,5.4vw,3.6rem);line-height:.92;letter-spacing:-.02em;margin:0 0 6px;font-variation-settings:"opsz" 96}
+.lede{margin:0 0 20px;color:var(--ink-soft);max-width:52ch}
+
+/* board */
+.stage{--pad:clamp(10px,2.6vw,18px);--slot:clamp(54px,9vw,70px);position:relative;max-width:620px;padding-left:30px}
+.slots{display:grid;grid-template-columns:repeat(7,1fr);margin:0 var(--pad) 4px;height:var(--slot)}
+.slot{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;min-width:0}
+.ghost{width:62%;max-width:54px;aspect-ratio:1;border-radius:50%;opacity:0;transform:translateY(4px);transition:opacity .12s, transform .12s}
+.slot.hover .ghost{opacity:.55;transform:none}
+.slot.hover .ghost.hidden-ghost{opacity:0}
+.hint{font-size:.78rem;font-weight:700;line-height:1.1;text-align:center;max-width:100%;padding:2px 4px;border-radius:5px;color:var(--ink-soft);position:absolute;top:0}
+.hint.best{background:var(--ink);color:var(--paper)}
+.hint.win{color:var(--good)} .hint.best.win{background:var(--good);color:#fff}
+.hint.lose{color:var(--warn)}
+.poison{position:absolute;bottom:0;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-top:9px solid var(--warn)}
+.frame{position:relative;background:var(--wood);border-radius:14px 14px 6px 6px;padding:var(--pad);
+  box-shadow:inset 0 -6px 0 var(--wood-dark), 0 18px 30px -18px rgba(0,0,0,.45)}
+.frame::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  background:repeating-linear-gradient(97deg,var(--grain) 0 2px,transparent 2px 11px),repeating-linear-gradient(91deg,transparent 0 37px,var(--grain) 37px 39px)}
+.board{position:relative;aspect-ratio:7/6;width:100%}
+.behind{position:absolute;inset:0;background:var(--behind);border-radius:4px}
+.discs,.marks{position:absolute;inset:0}
+.discs{overflow:hidden}
+.face{position:absolute;inset:-1px;background-color:var(--wood);
+  background-image:repeating-linear-gradient(97deg,var(--grain) 0 2px,transparent 2px 11px);
+  -webkit-mask:radial-gradient(circle closest-side,transparent 82%,#000 84%) 0 0/calc(100%/7) calc(100%/6) repeat;
+          mask:radial-gradient(circle closest-side,transparent 82%,#000 84%) 0 0/calc(100%/7) calc(100%/6) repeat;pointer-events:none}
+.bevel{position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(circle closest-side,transparent 79%,rgba(0,0,0,.30) 83%,rgba(255,255,255,.12) 86%,transparent 90%) 0 0/calc(100%/7) calc(100%/6) repeat}
+.cell{position:absolute;width:calc(100%/7);height:calc(100%/6);display:grid;place-items:center}
+.disc{width:84%;height:84%;border-radius:50%;box-shadow:inset 0 0 0 5px rgba(0,0,0,.07), inset 0 -3px 5px rgba(0,0,0,.18)}
+.disc.you,.ghost.you,.sw.you{background:radial-gradient(circle at 34% 30%,var(--you-hi),var(--you) 58%,#1A2747)}
+.disc.bot,.ghost.bot,.sw.bot{background:radial-gradient(circle at 34% 30%,#FFFDF7,var(--bot) 55%,var(--bot-lo))}
+.disc.drop{animation:drop var(--t,.3s) cubic-bezier(.55,0,.85,.35) both}
+@keyframes drop{from{transform:translateY(calc(var(--n) * -119%))}to{transform:none}}
+@media (prefers-reduced-motion:reduce){.disc.drop{animation:none}.ghost{transition:none}}
+.cell.last::after{content:"";width:14%;height:14%;border-radius:50%;background:var(--gold);position:absolute}
+.mark{position:absolute;width:calc(100%/7);height:calc(100%/6);display:grid;place-items:center;pointer-events:none}
+.threat{width:28%;height:28%;border-radius:50%}
+.threat.you{background:var(--you-hi);box-shadow:0 0 0 2px var(--bot)}
+.threat.bot{background:var(--bot);box-shadow:0 0 0 2px var(--you)}
+.threat.both{background:conic-gradient(var(--you-hi) 0 50%,var(--bot) 0);box-shadow:0 0 0 2px var(--gold)}
+.threat.dead{background:transparent;box-shadow:none;border:2px dashed var(--bot)}
+.threat.dead.you{border-color:#9DB2E6}
+.winring{width:90%;height:90%;border-radius:50%;box-shadow:0 0 0 4px var(--gold)}
+.rows{position:absolute;top:0;bottom:0;right:calc(100% + var(--pad) + 6px);display:grid;grid-template-rows:repeat(6,1fr)}
+.rows span{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:.78rem;line-height:1;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.rows i{display:none;width:8px;height:8px;border-radius:50%}
+.coach-on .rows i{display:block}
+.hits{position:absolute;left:0;right:0;bottom:0;top:calc(-1 * (var(--slot) + 4px + var(--pad)));display:grid;grid-template-columns:repeat(7,1fr);z-index:5}
+.hit{background:transparent;border:0;padding:0;margin:0;cursor:pointer;border-radius:10px;min-width:0}
+.hit:disabled{cursor:default}
+.hit:focus-visible{outline-offset:-3px}
+.cols{display:grid;grid-template-columns:repeat(7,1fr);margin:6px var(--pad) 0;font-size:.8rem;color:var(--ink-soft);text-align:center}
+.kbd{font-size:.82rem;color:var(--ink-soft);margin:14px 0 0;padding-left:30px}
+
+/* rail */
+.turn{margin:0 0 6px;padding-left:30px;max-width:620px}
+.turn-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.discs.clearing .disc{animation:clear .42s cubic-bezier(.55,0,1,.45) forwards}
+.discs.clearing .cell::after{display:none}
+@keyframes clear{to{transform:translateY(760%)}}
+.hit,.btn,.seg button,.switch,.linkish{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.status.busy::after{content:"";display:inline-block;width:1.2em;text-align:left;animation:dots 1.2s steps(1) infinite}
+@keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
+@media (prefers-reduced-motion:reduce){.status.busy::after{animation:none;content:"..."}}
+.rows i.sw,.moves .sw{box-shadow:0 0 0 1px var(--ink-soft)}
+@media (pointer:coarse){.kbd{display:none}}
+@media (max-width:520px){.hint{font-size:.66rem;padding:1px 2px}.lede{font-size:.95rem}}
+
+.rail{display:flex;flex-direction:column;gap:22px;padding-top:6px}
+@media (max-width:860px){.rail{padding-top:0}}
+.status{font-family:var(--display);font-weight:700;font-size:1.45rem;line-height:1.15;margin:0;min-height:1.2em;font-variation-settings:"opsz" 48}
+.note{margin:6px 0 0;font-size:.95rem;color:var(--ink-soft);min-height:1.5em}
+.note.bad{color:var(--warn)} .note.good{color:var(--good)}
+.group h2{font-family:var(--display);font-size:1.02rem;font-weight:700;margin:0 0 8px}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+.btn{border:1.5px solid var(--ink);background:transparent;border-radius:999px;padding:7px 14px;cursor:pointer;font-weight:700;font-size:.92rem}
+.btn.solid{background:var(--ink);color:var(--paper)}
+.btn:disabled{opacity:.4;cursor:default}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);border:1.5px solid var(--ink);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:8px 4px;cursor:pointer;font-size:.88rem;font-weight:700;border-left:1.5px solid var(--ink)}
+.seg button:first-child{border-left:0}
+.seg button[aria-checked="true"]{background:var(--ink);color:var(--paper)}
+.seg-note{font-size:.85rem;color:var(--ink-soft);margin:6px 0 0}
+.switch{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;background:none;border:0;padding:0}
+.switch .track{width:40px;height:22px;border-radius:11px;background:var(--line);position:relative;transition:background .15s}
+.switch .track::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--paper);transition:transform .15s}
+.switch[aria-checked="true"] .track{background:var(--good)}
+.switch[aria-checked="true"] .track::after{transform:translateX(18px)}
+.record{font-variant-numeric:tabular-nums;margin:0}
+.record b{font-family:var(--display);font-size:1.3rem}
+.linkish{background:none;border:0;padding:0;color:var(--ink-soft);text-decoration:underline;cursor:pointer;font-size:.85rem}
+.legend{display:grid;gap:8px;font-size:.9rem;margin:10px 0 0}
+.legend div{display:grid;grid-template-columns:26px 1fr;gap:8px;align-items:start}
+.legend .k{width:22px;height:22px;border-radius:5px;background:var(--behind);display:grid;place-items:center;margin-top:1px}
+.legend .k .threat{width:11px;height:11px}
+.coach-copy{font-size:.92rem;margin:0;max-width:46ch}
+.coach-copy + .coach-copy{margin-top:8px}
+.sw{display:inline-block;width:.8em;height:.8em;border-radius:50%;vertical-align:-.05em}
+.moves{margin:0;padding:0;list-style:none;display:flex;flex-wrap:wrap;gap:4px 12px;font-variant-numeric:tabular-nums;font-size:.9rem;max-height:9.5em;overflow:auto}
+.moves li{white-space:nowrap}
+.moves .n{color:var(--ink-soft);margin-right:3px}
+.hidden{display:none !important}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <section>
+    <h1>Four in a row</h1>
+    <p class="lede">Play the engine. Turn the coach on to see every live threat, whose rows it sits on, and which columns hand the other side a win.</p>
+    <div class="turn">
+      <div class="turn-top">
+        <p class="status" id="status" aria-live="polite">Your move</p>
+        <button class="btn" id="againBtn">Play again</button>
+      </div>
+      <p class="note" id="note" aria-live="polite"></p>
+    </div>
+    <div class="stage" id="stage">
+      <div class="slots" id="slots"></div>
+      <div class="frame">
+        <div class="board" id="board">
+          <div class="behind"></div>
+          <div class="discs" id="discs"></div>
+          <div class="face"></div>
+          <div class="bevel"></div>
+          <div class="marks" id="marks"></div>
+          <div class="rows" id="rows" aria-hidden="true"></div>
+          <div class="hits" id="hits"></div>
+        </div>
+      </div>
+      <div class="cols" aria-hidden="true"><span>a</span><span>b</span><span>c</span><span>d</span><span>e</span><span>f</span><span>g</span></div>
+    </div>
+    <p class="kbd">Keys: 1 to 7 drop a disc, H for a hint, U to undo, R to play again.</p>
+  </section>
+
+  <aside class="rail">
+    <div class="group">
+      <h2>New game</h2>
+      <div class="btns">
+        <button class="btn solid" id="newYou">You start</button>
+        <button class="btn" id="newBot">Engine starts</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Engine strength</h2>
+      <div class="seg" role="radiogroup" aria-label="Engine strength" id="levels">
+        <button role="radio" data-level="casual">Casual</button>
+        <button role="radio" data-level="club">Club</button>
+        <button role="radio" data-level="strong">Strong</button>
+        <button role="radio" data-level="ruthless">Ruthless</button>
+      </div>
+      <p class="seg-note" id="levelNote"></p>
+    </div>
+
+    <div class="group">
+      <div class="btns">
+        <button class="btn" id="hintBtn">Show hint</button>
+        <button class="btn" id="undoBtn">Undo</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <p class="record" id="record"></p>
+      <button class="linkish" id="resetRecord">Reset record for this level</button>
+    </div>
+
+    <div class="group">
+      <button class="switch" role="switch" aria-checked="false" id="coachBtn"><span class="track"></span>Coach overlay</button>
+      <div id="coachPanel" class="hidden">
+        <div class="legend">
+          <div><span class="k"><span class="threat you"></span></span><span>Your threat on your rows. These win endgames.</span></div>
+          <div><span class="k"><span class="threat dead you"></span></span><span>Your threat on the wrong rows. Usually blocked for free.</span></div>
+          <div><span class="k"><span class="threat bot"></span></span><span>Engine threat on its rows. Deal with it early.</span></div>
+          <div><span class="k"><span class="poison" style="position:static"></span></span><span>Dropping here lets the engine take the square above and win.</span></div>
+        </div>
+        <p class="coach-copy" style="margin-top:12px" id="parityCopy"></p>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Moves</h2>
+      <ol class="moves" id="moves"></ol>
+    </div>
+  </aside>
+</main>
+<script>
+function engineFactory() {
+// ---- Engine: first mover = 1, second = 2. Cell idx = col*6 + row (row 0 = bottom)
+const W = 7, H = 6, N = 42;
+const WIN = 100000, MATE = WIN - 1000;
+const LINES = []; // 4 cell indices each
+(function buildLines() {
+  const add = (c, r, dc, dr) => {
+    const cells = [];
+    for (let k = 0; k < 4; k++) {
+      const cc = c + dc * k, rr = r + dr * k;
+      if (cc < 0 || cc >= W || rr < 0 || rr >= H) return;
+      cells.push(cc * H + rr);
+    }
+    LINES.push(cells);
+  };
+  for (let c = 0; c < W; c++) for (let r = 0; r < H; r++) {
+    add(c, r, 1, 0); add(c, r, 0, 1); add(c, r, 1, 1); add(c, r, 1, -1);
+  }
+})();
+const NL = LINES.length; // 69
+const LINE_CELLS = new Int8Array(NL * 4);
+LINES.forEach((l, i) => l.forEach((x, k) => (LINE_CELLS[i * 4 + k] = x)));
+const CELL_LINES = Array.from({ length: N }, () => []);
+LINES.forEach((l, i) => l.forEach(x => CELL_LINES[x].push(i)));
+const CELL_LINES_T = CELL_LINES.map(a => Int16Array.from(a));
+const CELL_WEIGHT = CELL_LINES.map(a => a.length);
+const ORDER = [3, 2, 4, 1, 5, 0, 6];
+const MOVEBUF = new Int8Array(64 * 7), SCOREBUF = new Int32Array(64 * 7);
+const T1 = new Uint8Array(42), T2 = new Uint8Array(42);
+
+function rnd32() { return (Math.random() * 4294967296) | 0; }
+const Z1 = new Int32Array(N * 2).map(rnd32), Z2 = new Int32Array(N * 2).map(rnd32);
+const TT_BITS = 20, TT_SIZE = 1 << TT_BITS, TT_MASK = TT_SIZE - 1;
+const ttKey = new Int32Array(TT_SIZE), ttVal = new Int32Array(TT_SIZE);
+const ttDepth = new Int8Array(TT_SIZE).fill(-1), ttFlag = new Uint8Array(TT_SIZE), ttBest = new Int8Array(TT_SIZE);
+
+class Engine {
+  constructor() { this.reset(); }
+  reset() {
+    this.board = new Int8Array(N);
+    this.h = new Int8Array(W);
+    this.cnt = [null, new Int8Array(NL), new Int8Array(NL)];
+    this.moves = 0; this.h1 = 0; this.h2 = 0; this.history = [];
+  }
+  toMove() { return (this.moves & 1) === 0 ? 1 : 2; }
+  canPlay(c) { return this.h[c] < H; }
+  play(c) {
+    const p = this.toMove(), idx = c * H + this.h[c];
+    this.board[idx] = p; this.h[c]++; this.moves++;
+    const cl = CELL_LINES_T[idx], cp = this.cnt[p];
+    for (let i = 0; i < cl.length; i++) cp[cl[i]]++;
+    this.h1 ^= Z1[idx * 2 + p - 1]; this.h2 ^= Z2[idx * 2 + p - 1];
+    this.history.push(c);
+  }
+  undo() {
+    const c = this.history.pop();
+    this.h[c]--; this.moves--;
+    const idx = c * H + this.h[c], p = this.board[idx];
+    this.board[idx] = 0;
+    const cl = CELL_LINES_T[idx], cp = this.cnt[p];
+    for (let i = 0; i < cl.length; i++) cp[cl[i]]--;
+    this.h1 ^= Z1[idx * 2 + p - 1]; this.h2 ^= Z2[idx * 2 + p - 1];
+    return c;
+  }
+  // would player p complete four by occupying empty cell idx?
+  wouldWin(idx, p) {
+    const cl = CELL_LINES_T[idx], cp = this.cnt[p];
+    for (let i = 0; i < cl.length; i++) if (cp[cl[i]] === 3) return true;
+    return false;
+  }
+  lastMoveWon() {
+    if (!this.history.length) return null;
+    const c = this.history[this.history.length - 1], idx = c * H + this.h[c] - 1, p = this.board[idx];
+    const cl = CELL_LINES_T[idx], cells = new Set();
+    for (let i = 0; i < cl.length; i++) if (this.cnt[p][cl[i]] === 4) LINES[cl[i]].forEach(x => cells.add(x));
+    return cells.size ? { player: p, cells: [...cells] } : null;
+  }
+  // threat cells: empty cells that complete four for each player
+  threats() {
+    const t1 = T1, t2 = T2; t1.fill(0); t2.fill(0);
+    const c1 = this.cnt[1], c2 = this.cnt[2], b = this.board;
+    for (let l = 0; l < NL; l++) {
+      if (c1[l] === 3 && c2[l] === 0) { for (let k = 0; k < 4; k++) { const x = LINE_CELLS[l * 4 + k]; if (!b[x]) t1[x] = 1; } }
+      else if (c2[l] === 3 && c1[l] === 0) { for (let k = 0; k < 4; k++) { const x = LINE_CELLS[l * 4 + k]; if (!b[x]) t2[x] = 1; } }
+    }
+    return [t1, t2];
+  }
+  // static evaluation from the side to move's perspective
+  evaluate() {
+    const c1 = this.cnt[1], c2 = this.cnt[2];
+    let s = 0;
+    for (let l = 0; l < NL; l++) {
+      const a = c1[l], b = c2[l];
+      if (b === 0) { if (a === 1) s += 1; else if (a === 2) s += 5; }
+      else if (a === 0) { if (b === 1) s -= 1; else if (b === 2) s -= 5; }
+    }
+    const [t1, t2] = this.threats();
+    let p1OddCol = false, p2EvenCol = false;
+    for (let c = 0; c < W; c++) {
+      let seen = 0; // 0 none, 1 p1 lowest, 2 p2 lowest
+      for (let r = this.h[c]; r < H; r++) {
+        const idx = c * H + r, a = t1[idx], b = t2[idx];
+        if (!a && !b) continue;
+        const odd = (r & 1) === 0; // row number r+1 is odd
+        const m = seen ? 0.5 : 1;
+        if (a) {
+          s += (odd ? 45 : 15) * m;
+          if (r + 1 < H && t1[idx + 1]) s += 40 * m; // stacked pair
+          if (!seen && odd) p1OddCol = true;
+        }
+        if (b) {
+          s -= (odd ? 15 : 45) * m;
+          if (r + 1 < H && t2[idx + 1]) s -= 40 * m;
+          if (!seen && !odd) p2EvenCol = true;
+        }
+        if (!seen) seen = a && b ? (odd ? 1 : 2) : a ? 1 : 2;
+      }
+    }
+    if (p1OddCol) s += 90; else if (p2EvenCol) s -= 90; else s -= 10;
+    s = Math.round(s);
+    return this.toMove() === 1 ? s : -s;
+  }
+  negamax(depth, alpha, beta, ply) {
+    if ((++this.nodes & 4095) === 0 && this.canAbort && performance.now() > this.deadline) throw 'abort';
+    if (this.moves === N) return 0;
+    const me = this.toMove(), opp = 3 - me, h = this.h;
+    for (let c = 0; c < W; c++) if (h[c] < H && this.wouldWin(c * H + h[c], me)) return WIN - ply;
+    let forced = -1, oppWins = 0;
+    for (let c = 0; c < W; c++) if (h[c] < H && this.wouldWin(c * H + h[c], opp)) { oppWins++; forced = c; }
+    if (oppWins >= 2) return -(WIN - ply - 1);
+    if (this.moves === N - 1) { return 0; } // last square, no win available
+    if (depth <= 0) return this.evaluate();
+
+    const ti = this.h1 & TT_MASK;
+    let ttMove = -1;
+    if (ttKey[ti] === this.h2 && ttDepth[ti] >= 0) {
+      ttMove = ttBest[ti];
+      if (ttDepth[ti] >= depth) {
+        let v = ttVal[ti];
+        if (v > MATE) v -= ply; else if (v < -MATE) v += ply;
+        const f = ttFlag[ti];
+        if (f === 0) return v;
+        if (f === 1 && v > alpha) alpha = v;
+        else if (f === 2 && v < beta) beta = v;
+        if (alpha >= beta) return v;
+      }
+    }
+
+    const alphaOrig = alpha;
+    // move list with ordering scores
+    const base = ply * 7; let n = 0;
+    let best = -Infinity, bestMove = -1;
+    const cn = forced >= 0 ? 1 : 7;
+    for (let i = 0; i < cn; i++) {
+      const c = forced >= 0 ? forced : ORDER[i];
+      if (h[c] >= H) continue;
+      const idx = c * H + h[c];
+      if (h[c] + 1 < H && this.wouldWin(idx + 1, opp)) {
+        // playing here hands the opponent the square above: loses next ply
+        const v = -(WIN - ply - 1);
+        if (v > best) { best = v; bestMove = c; }
+        continue;
+      }
+      let sc = 0;
+      const cl = CELL_LINES_T[idx], cm = this.cnt[me], co = this.cnt[opp];
+      for (let j = 0; j < cl.length; j++) {
+        const l = cl[j];
+        if (co[l] === 0) sc += cm[l] === 2 ? 12 : cm[l] === 1 ? 3 : 1;
+        else if (cm[l] === 0 && co[l] === 2) sc += 4;
+      }
+      if (h[c] + 1 < H && this.wouldWin(idx + 1, me)) sc -= 20; // don't burn our own threat
+      if (c === ttMove) sc += 10000;
+      let k = n++;
+      while (k > 0 && SCOREBUF[base + k - 1] < sc) { MOVEBUF[base + k] = MOVEBUF[base + k - 1]; SCOREBUF[base + k] = SCOREBUF[base + k - 1]; k--; }
+      MOVEBUF[base + k] = c; SCOREBUF[base + k] = sc;
+    }
+    for (let i = 0; i < n; i++) {
+      const c = MOVEBUF[base + i];
+      this.play(c);
+      const v = -this.negamax(depth - 1, -beta, -alpha, ply + 1);
+      this.undo();
+      if (v > best) { best = v; bestMove = c; }
+      if (v > alpha) alpha = v;
+      if (alpha >= beta) break;
+    }
+    if (bestMove < 0) return 0;
+    // store
+    let sv = best;
+    if (sv > MATE) sv += ply; else if (sv < -MATE) sv -= ply;
+    if (ttDepth[ti] <= depth || ttKey[ti] !== this.h2) {
+      ttKey[ti] = this.h2; ttVal[ti] = sv; ttDepth[ti] = Math.min(depth, 127); ttBest[ti] = bestMove;
+      ttFlag[ti] = best <= alphaOrig ? 2 : best >= beta ? 1 : 0;
+    }
+    return best;
+  }
+  // returns {scores:[7] (null for illegal), best, depth, exact}
+  think(timeMs, maxDepth, fullWindow) {
+    this.deadline = performance.now() + timeMs; this.nodes = 0;
+    const legal = ORDER.filter(c => this.canPlay(c));
+    const me = this.toMove();
+    const remaining = N - this.moves;
+    const startLen = this.history.length;
+    if (this.moves === 0) return { scores: [0,0,0,1,0,0,0].map(x => x), best: 3, depth: 0, exact: false, nodes: 0, book: true };
+    maxDepth = Math.min(maxDepth, remaining);
+    let result = null, rootOrder = legal.slice();
+    for (let d = 1; d <= maxDepth; d++) {
+      this.canAbort = d > 1;
+      const scores = new Array(W).fill(null);
+      try {
+        let alpha = -Infinity;
+        for (const c of rootOrder) {
+          const idx = c * H + this.h[c];
+          let v;
+          if (this.wouldWin(idx, me)) v = WIN;
+          else {
+            this.play(c);
+            v = -this.negamax(d - 1, -Infinity, fullWindow ? Infinity : -alpha, 1);
+            this.undo();
+          }
+          scores[c] = v;
+          if (v > alpha) alpha = v;
+        }
+      } catch (e) {
+        while (this.history.length > startLen) this.undo();
+        if (e === 'abort') break; throw e;
+      }
+      let best = rootOrder[0];
+      for (const c of rootOrder) if (scores[c] > scores[best]) best = c;
+      result = { scores, best, depth: d, exact: d >= remaining, nodes: this.nodes };
+      rootOrder = legal.slice().sort((a, b) => scores[b] - scores[a]);
+      if (fullWindow) { if (legal.every(c => Math.abs(scores[c]) > MATE)) break; }
+      else if (scores[best] > MATE || legal.every(c => c === best || scores[c] < -MATE)) break;
+    }
+    return result;
+  }
+}
+
+
+  return { Engine, WIN, MATE };
+}
+const { Engine, WIN, MATE } = engineFactory();
+
+
+(() => {
+  const $ = id => document.getElementById(id);
+  const E = new Engine();   // game state
+  const S = new Engine();   // fallback search engine on the main thread
+  const COLS = 'abcdefg';
+  const LEVELS = {
+    casual:   { label: 'Casual',   note: 'Looks 3 moves ahead and makes the odd mistake.', opts: { time: 1e9, depth: 3, full: true }, noise: 70, slip: 0.2 },
+    club:     { label: 'Club',     note: 'Looks 7 moves ahead. A decent human opponent.', opts: { time: 1e9, depth: 7, full: true }, noise: 18, slip: 0 },
+    strong:   { label: 'Strong',   note: 'Searches for about a second. Plays endgames perfectly.', opts: { time: 900, depth: 42, full: false }, noise: 0, slip: 0 },
+    ruthless: { label: 'Ruthless', note: 'Searches for 2.5 seconds and opens in the centre. Beat this to stop losing.', opts: { time: 2500, depth: 42, full: false }, noise: 0, slip: 0 }
+  };
+  const HINT_OPTS = { time: 1800, depth: 42, full: true };
+
+  // ---- search runs in a background worker so the page never freezes; falls back to the main thread
+  const WORKER_SRC = 'const { Engine } = (' + engineFactory.toString() + ')();\n' +
+    'const X = new Engine();\n' +
+    'onmessage = ev => { const m = ev.data; X.reset(); for (const c of m.history) X.play(c); postMessage({ id: m.id, r: X.think(m.time, m.depth, m.full) }); };';
+  let worker = null, reqId = 0;
+  const pending = new Map();
+  function runLocal(history, opts) { S.reset(); for (const c of history) S.play(c); return S.think(opts.time, opts.depth, opts.full); }
+  function makeWorker() {
+    try {
+      const w = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' })));
+      w.onmessage = ev => { const job = pending.get(ev.data.id); if (job) { pending.delete(ev.data.id); job.resolve(ev.data.r); } };
+      w.onerror = ev => {
+        if (ev && ev.preventDefault) ev.preventDefault();
+        worker = null;
+        const jobs = [...pending.values()]; pending.clear();
+        for (const job of jobs) setTimeout(() => job.resolve(runLocal(job.history, job.opts)), 20);
+      };
+      return w;
+    } catch (e) { return null; }
+  }
+  worker = makeWorker();
+  function search(opts) {
+    const history = E.history.slice(), id = ++reqId;
+    if (worker) return new Promise(resolve => { pending.set(id, { resolve, history, opts }); worker.postMessage({ id, history, ...opts }); });
+    return new Promise(resolve => setTimeout(() => resolve(runLocal(history, opts)), 30));
+  }
+  function cancelSearch() {
+    token++;
+    if (worker && pending.size) { worker.terminate(); pending.clear(); worker = makeWorker(); }
+    thinking = false;
+  }
+  let token = 0;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem('fiar:' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('fiar:' + k, JSON.stringify(v)); } catch (e) {} }
+  };
+
+  let level = store.get('level', 'strong'); if (!LEVELS[level]) level = 'strong';
+  let coach = !!store.get('coach', false);
+  let humanFirst = true, thinking = false, over = false, result = null;
+  let hints = null, hover = -1, lastRendered = 0;
+  let prevEngineScore = null, lostFrom = null, note = { text: '', cls: '' };
+
+  const humanP = () => humanFirst ? 1 : 2;
+  const who = p => p === humanP() ? 'you' : 'bot';
+  const rowOwner = r => (r % 2 === 0) ? 1 : 2; // row index 0 = row 1 (odd) belongs to first player
+
+  // ---- build static DOM
+  const slotsEl = $('slots'), hitsEl = $('hits'), rowsEl = $('rows');
+  const slotEls = [], ghostEls = [], hintEls = [], poisonEls = [], hitEls = [];
+  for (let c = 0; c < 7; c++) {
+    const s = document.createElement('div'); s.className = 'slot';
+    const hint = document.createElement('span'); hint.className = 'hint';
+    const poison = document.createElement('span'); poison.className = 'poison hidden';
+    const g = document.createElement('div'); g.className = 'ghost you';
+    s.append(hint, g, poison); slotsEl.append(s);
+    slotEls.push(s); ghostEls.push(g); hintEls.push(hint); poisonEls.push(poison);
+    const b = document.createElement('button'); b.className = 'hit';
+    b.addEventListener('click', () => humanPlay(c));
+    b.addEventListener('pointerenter', ev => { if (ev.pointerType === 'mouse') { hover = c; paintHover(); } });
+    b.addEventListener('pointerleave', () => { if (hover === c) { hover = -1; paintHover(); } });
+    b.addEventListener('focus', () => { if (b.matches(':focus-visible')) { hover = c; paintHover(); } });
+    b.addEventListener('blur', () => { if (hover === c) { hover = -1; paintHover(); } });
+    b.addEventListener('keydown', ev => {
+      if (ev.key === 'ArrowRight' && c < 6) { ev.preventDefault(); hitEls[c + 1].focus(); }
+      if (ev.key === 'ArrowLeft' && c > 0) { ev.preventDefault(); hitEls[c - 1].focus(); }
+    });
+    hitsEl.append(b); hitEls.push(b);
+  }
+  const rowSw = [];
+  for (let r = 5; r >= 0; r--) {
+    const sp = document.createElement('span'); const i = document.createElement('i');
+    sp.append(document.createTextNode(String(r + 1)), i); rowsEl.append(sp); rowSw[r] = i;
+  }
+
+  function paintHover() {
+    for (let c = 0; c < 7; c++) slotEls[c].classList.toggle('hover', c === hover && canHumanPlay() && E.canPlay(c));
+  }
+  const canHumanPlay = () => !over && !thinking && !clearing && E.toMove() === humanP();
+
+  // ---- helpers
+  const cellStyle = (c, r) => `left:${(c * 100 / 7).toFixed(4)}%;top:${((5 - r) * 100 / 6).toFixed(4)}%`;
+  function notation(i) { // i = index in history
+    const c = E.history[i]; let r = 0;
+    for (let k = 0; k < i; k++) if (E.history[k] === c) r++;
+    return COLS[c] + (r + 1);
+  }
+  function describeScore(v, exact) {
+    if (v == null) return null;
+    if (exact && v === 0) return { t: 'Draw', cls: '' };
+    if (v > MATE) { const n = Math.floor((WIN - v) / 2) + 1; return { t: n === 1 ? 'Wins now' : 'Win in ' + n, cls: 'win' }; }
+    if (v < -MATE) { const n = Math.ceil((WIN + v) / 2); return { t: 'Loses in ' + Math.max(1, n), cls: 'lose' }; }
+    const x = v / 100;
+    if (Math.abs(x) < 0.05) return { t: 'Even', cls: '' };
+    return { t: (x > 0 ? '+' : '\u2212') + Math.abs(x).toFixed(1), cls: '' };
+  }
+
+  // ---- rendering
+  function renderLight(text) {
+    $('status').textContent = text; $('status').classList.add('busy');
+    for (let c = 0; c < 7; c++) hitEls[c].disabled = true;
+    $('hintBtn').disabled = true;
+    paintHover();
+  }
+  let lastKey = '';
+  function render() {
+    document.body.classList.toggle('coach-on', coach);
+    const discsEl = $('discs'), marksEl = $('marks');
+    const n = E.history.length;
+    const key = E.history.join(',') + '|' + over;
+    if (key !== lastKey) {
+    let html = '';
+    const heights = [0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < n; i++) {
+      const c = E.history[i], r = heights[c]++;
+      const p = (i % 2 === 0) ? 1 : 2;
+      const isNew = i === n - 1 && n > lastRendered;
+      const fall = 6 - r;
+      const anim = isNew ? ` drop" style="--n:${fall};--t:${(0.12 + 0.055 * fall).toFixed(3)}s` : '';
+      html += `<div class="cell${i === n - 1 && !over ? ' last' : ''}" style="${cellStyle(c, r)}"><div class="disc ${who(p)}${anim}"></div></div>`;
+    }
+    discsEl.innerHTML = html;
+    lastKey = key;
+    }
+    lastRendered = n;
+
+    // marks: win ring, threats
+    let mk = '';
+    if (result && result.cells) for (const idx of result.cells) mk += `<div class="mark" style="${cellStyle(Math.floor(idx / 6), idx % 6)}"><div class="winring"></div></div>`;
+    const poison = [false, false, false, false, false, false, false];
+    if (coach && !over) {
+      const [t1, t2] = E.threats();
+      for (let idx = 0; idx < 42; idx++) {
+        const a = t1[idx], b = t2[idx]; if (!a && !b) continue;
+        const c = Math.floor(idx / 6), r = idx % 6;
+        let cls;
+        if (a && b) cls = 'both';
+        else { const p = a ? 1 : 2; cls = who(p) + (rowOwner(r) === p ? '' : ' dead'); }
+        mk += `<div class="mark" style="${cellStyle(c, r)}"><div class="threat ${cls}"></div></div>`;
+      }
+      if (E.toMove() === humanP()) {
+        const bot = 3 - humanP();
+        for (let c = 0; c < 7; c++) { const h = E.h[c]; if (h + 1 < 6 && E.wouldWin(c * 6 + h + 1, bot) && !E.wouldWin(c * 6 + h, humanP())) poison[c] = true; }
+      }
+    }
+    marksEl.innerHTML = mk;
+
+    for (let c = 0; c < 7; c++) {
+      poisonEls[c].classList.toggle('hidden', !poison[c]);
+      hitEls[c].disabled = !canHumanPlay() || !E.canPlay(c);
+      hitEls[c].setAttribute('aria-label', `Drop in column ${COLS[c]}` + (poison[c] ? ', gives the engine a win' : '') + (hints && hints.scores[c] != null ? ', hint ' + describeScore(hints.scores[c], hints.exact).t : ''));
+      const h = hints && hints.scores[c] != null ? describeScore(hints.scores[c], hints.exact) : null;
+      hintEls[c].textContent = h ? h.t : '';
+      hintEls[c].className = 'hint' + (h ? ' ' + h.cls : '') + (h && hints.best === c ? ' best' : '');
+      ghostEls[c].style.visibility = h ? 'hidden' : '';
+      ghostEls[c].className = 'ghost ' + who(humanP());
+    }
+    for (let r = 0; r < 6; r++) rowSw[r].className = 'sw ' + who(rowOwner(r));
+    paintHover();
+
+    // status
+    let st;
+    if (over) st = result.draw ? 'Draw' : result.player === humanP() ? 'You win' : 'Engine wins';
+    else if (thinking) st = 'Engine is thinking';
+    else st = E.history.length === 0 ? 'Your move. Start in the centre.' : 'Your move';
+    $('status').textContent = st;
+    $('status').classList.toggle('busy', thinking && !over);
+    $('note').textContent = note.text; $('note').className = 'note' + (note.cls ? ' ' + note.cls : '');
+
+    for (const b of $('levels').children) b.setAttribute('aria-checked', String(b.dataset.level === level));
+    $('levelNote').textContent = LEVELS[level].note;
+    $('hintBtn').disabled = !canHumanPlay();
+    const again = $('againBtn');
+    again.disabled = E.history.length === 0;
+    again.classList.toggle('solid', over);
+    again.textContent = over ? 'Play again' : 'Clear board';
+    again.title = humanFirst ? 'Restart with you going first' : 'Restart with the engine going first';
+    $('undoBtn').disabled = !E.history.some((_, i) => ((i % 2 === 0) ? 1 : 2) === humanP());
+    $('coachBtn').setAttribute('aria-checked', String(coach));
+    $('coachPanel').classList.toggle('hidden', !coach);
+
+    const rec = store.get('record', {})[level] || { w: 0, d: 0, l: 0 };
+    $('record').innerHTML = `At ${LEVELS[level].label}: <b>${rec.w}</b> won, <b>${rec.d}</b> drawn, <b>${rec.l}</b> lost`;
+
+    const you = humanFirst ? 'You moved first, so' : 'The engine moved first, so';
+    $('parityCopy').textContent = `${you} odd rows (1, 3, 5) belong to ${humanFirst ? 'you' : 'the engine'} and even rows (2, 4, 6) to ${humanFirst ? 'the engine' : 'you'}. The dot beside each row number shows the owner. When the board fills up, a threat on its owner\u2019s row is the one that usually gets cashed in.`;
+
+    let ml = '';
+    for (let i = 0; i < E.history.length; i += 2) {
+      const a = notation(i), b = i + 1 < E.history.length ? notation(i + 1) : '';
+      ml += `<li><span class="n">${i / 2 + 1}.</span><span class="sw ${who(1)}"></span> ${a}${b ? ` <span class="sw ${who(2)}"></span> ${b}` : ''}</li>`;
+    }
+    $('moves').innerHTML = ml;
+    const ol = $('moves'); ol.scrollTop = ol.scrollHeight;
+  }
+
+  // ---- game flow
+  function checkEnd() {
+    const w = E.lastMoveWon();
+    if (w) result = { player: w.player, cells: w.cells };
+    else if (E.moves === 42) result = { draw: true };
+    else return false;
+    over = true;
+    const rec = store.get('record', {});
+    const r = rec[level] || { w: 0, d: 0, l: 0 };
+    if (result.draw) r.d++; else if (result.player === humanP()) r.w++; else r.l++;
+    rec[level] = r; store.set('record', rec);
+    if (result.draw) note = { text: 'Nobody found four. Replay it going first and hunt for an odd-row threat.', cls: '' };
+    else if (result.player === humanP()) note = { text: level === 'ruthless' ? 'You beat the strongest setting.' : 'Try the next level up.', cls: 'good' };
+    else if (lostFrom != null) note = { text: `The engine had a forced win from move ${lostFrom}. Undo and look for a different move before that.`, cls: 'bad' };
+    else note = { text: 'Undo a few moves and turn the coach on to see where it went wrong.', cls: 'bad' };
+    return true;
+  }
+
+  let clearing = false;
+  function playAgain() {
+    if (clearing) return;
+    if (thinking) cancelSearch();
+    if (!E.history.length) { newGame(humanFirst); return; }
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { newGame(humanFirst); return; }
+    clearing = true;
+    for (const b of hitEls) b.disabled = true;
+    $('marks').innerHTML = '';
+    for (const el of poisonEls) el.classList.add('hidden');
+    $('discs').classList.add('clearing');
+    setTimeout(() => {
+      $('discs').classList.remove('clearing');
+      clearing = false;
+      newGame(humanFirst);
+    }, 420);
+  }
+
+  function newGame(youStart) {
+    if (thinking) cancelSearch();
+    token++;
+    E.reset(); humanFirst = youStart; over = false; result = null; hints = null;
+    prevEngineScore = null; lostFrom = null; lastRendered = 0;
+    note = { text: youStart ? '' : 'The engine opens. You are playing for even-row threats.', cls: '' };
+    lastKey = '';
+    render();
+    if (!youStart) engineMove();
+  }
+
+  function humanPlay(c) {
+    if (!canHumanPlay() || !E.canPlay(c)) return;
+    E.play(c); hints = null; note = { text: '', cls: '' };
+    if (checkEnd()) { render(); return; }
+    render();
+    engineMove();
+  }
+
+  async function engineMove() {
+    const t = ++token;
+    thinking = true; renderLight('Engine is thinking');
+    const L = LEVELS[level];
+    const mover = E.moves;
+    const minDelay = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 380;
+    const [r] = await Promise.all([search(L.opts), wait(minDelay)]);
+    if (t !== token) return; // game was reset or a move was taken back meanwhile
+    let pick = r.best;
+    if (!r.book && (L.noise || L.slip)) {
+      const legal = [0, 1, 2, 3, 4, 5, 6].filter(c => E.canPlay(c));
+      const safe = legal.filter(c => r.scores[c] > -MATE);
+      if (L.slip && Math.random() < L.slip && safe.length && !(r.scores[r.best] > MATE && Math.random() < 0.5)) {
+        pick = safe[Math.floor(Math.random() * safe.length)];
+      } else {
+        let bestV = -Infinity;
+        for (const c of legal) {
+          const v = r.scores[c];
+          const noisy = Math.abs(v) > MATE ? v : v + (Math.random() * 2 - 1) * L.noise;
+          if (noisy > bestV) { bestV = noisy; pick = c; }
+        }
+      }
+    }
+    const v = r.scores[r.best];
+    if (coach && E.history.length) {
+      const lastHuman = notation(E.history.length - 1);
+      if (v > MATE && !(prevEngineScore != null && prevEngineScore > MATE)) {
+        const n = Math.floor((WIN - v) / 2) + 1;
+        note = { text: `${lastHuman} let the engine force a win in ${n} ${n === 1 ? 'move' : 'moves'}.`, cls: 'bad' };
+      } else if (prevEngineScore != null && prevEngineScore < -MATE && !(v < -MATE)) {
+        note = { text: `${lastHuman} let the engine off the hook. You had a forced win.`, cls: 'bad' };
+      } else if (v < -MATE) {
+        note = { text: 'You have a forced win. Find it.', cls: 'good' };
+      }
+    }
+    if (v > MATE && pick === r.best) { if (lostFrom == null) lostFrom = Math.floor(mover / 2) + 1; }
+    else lostFrom = null;
+    prevEngineScore = pick === r.best ? v : null;
+    E.play(pick);
+    thinking = false;
+    checkEnd();
+    render();
+  }
+
+  async function showHint() {
+    if (!canHumanPlay()) return;
+    const t = ++token;
+    thinking = true; renderLight('Working out the hint');
+    let r;
+    if (E.moves === 0) {
+      r = { scores: [-1, -1, 0, 1, 0, -1, -1].map(x => x === 1 ? WIN - 40 : x === 0 ? 0 : -(WIN - 41)), best: 3, exact: true };
+      note = { text: 'Perfect play from the centre wins by move 41. Next to centre draws. The outer four columns lose.', cls: '' };
+    } else r = await search(HINT_OPTS);
+    if (t !== token) return;
+    hints = r; thinking = false;
+    render();
+  }
+
+  function undo() {
+    if (!E.history.length || clearing) return;
+    if (thinking) cancelSearch();
+    token++;
+    do { E.undo(); } while (E.history.length && E.toMove() !== humanP());
+    over = false; result = null; hints = null; prevEngineScore = null; lostFrom = null;
+    note = { text: 'Move taken back. Undone games still count in the record.', cls: '' };
+    lastRendered = E.history.length;
+    render();
+    if (E.toMove() !== humanP()) engineMove();
+  }
+
+  // ---- wire up
+  $('againBtn').addEventListener('click', playAgain);
+  $('newYou').addEventListener('click', () => newGame(true));
+  $('newBot').addEventListener('click', () => newGame(false));
+  $('hintBtn').addEventListener('click', showHint);
+  $('undoBtn').addEventListener('click', undo);
+  $('coachBtn').addEventListener('click', () => { coach = !coach; store.set('coach', coach); render(); });
+  $('resetRecord').addEventListener('click', () => { const rec = store.get('record', {}); delete rec[level]; store.set('record', rec); render(); });
+  for (const b of $('levels').children) b.addEventListener('click', () => { level = b.dataset.level; store.set('level', level); render(); });
+  document.addEventListener('keydown', ev => {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const t = ev.target; if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (ev.key >= '1' && ev.key <= '7') humanPlay(+ev.key - 1);
+    else if (ev.key === 'h' || ev.key === 'H') showHint();
+    else if (ev.key === 'u' || ev.key === 'U') undo();
+    else if (ev.key === 'r' || ev.key === 'R') playAgain();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
